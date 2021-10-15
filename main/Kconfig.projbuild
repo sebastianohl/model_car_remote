@@ -3,7 +3,12 @@ menu "Model Car Remote Configuration"
     config SERVO_INPUT_PORT_NUM
         int "Servo Input port number"
         range 1 46 if IDF_TARGET_ESP32
-        default 18 
+        default 11
+
+    config SERVO_OUTPUT_PORT_NUM
+        int "Servo Output port number"
+        range 1 46 if IDF_TARGET_ESP32
+        default 10 
 
 
 endmenu
