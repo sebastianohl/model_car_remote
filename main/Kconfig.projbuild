@@ -1,0 +1,11 @@
+menu "Model Car Remote Configuration"
+
+    config SERVO_INPUT_PORT_NUM
+        int "Servo Input port number"
+        range 0 2 if IDF_TARGET_ESP32
+        range 0 1 if IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32C3
+        default 2 if IDF_TARGET_ESP32
+        default 1 if IDF_TARGET_ESP32S2 || IDF_TARGET_ESP32C3
+
+
+endmenu
