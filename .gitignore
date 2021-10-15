@@ -75,3 +75,4 @@ kconfigs.in
 kconfigs_projbuild.in
 app-flash_args
 x509_crt_bundle.S
+partition_table-flash_args
