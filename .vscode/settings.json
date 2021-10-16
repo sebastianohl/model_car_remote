@@ -13,6 +13,7 @@
         "utility": "c",
         "queue.h": "c",
         "mcpwm.h": "c",
-        "soc_caps.h": "c"
+        "soc_caps.h": "c",
+        "modelcar.h": "c"
     }
 }

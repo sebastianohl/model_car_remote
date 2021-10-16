@@ -1,14 +1,55 @@
 menu "Model Car Remote Configuration"
 
-    config SERVO_INPUT_PORT_NUM
-        int "Servo Input port number"
+    config SERVO1_INPUT_PORT_NUM
+        int "Servo1 Input port number"
         range 1 46 if IDF_TARGET_ESP32
         default 11
 
-    config SERVO_OUTPUT_PORT_NUM
-        int "Servo Output port number"
+    config SERVO1_OUTPUT_PORT_NUM
+        int "Servo1 Output port number"
         range 1 46 if IDF_TARGET_ESP32
         default 10 
 
+    config SERVO2_INPUT_PORT_NUM
+        int "Servo2 Input port number"
+        range 1 46 if IDF_TARGET_ESP32
+        default 9
 
+    config SERVO2_OUTPUT_PORT_NUM
+        int "Servo2 Output port number"
+        range 1 46 if IDF_TARGET_ESP32
+        default 8
+
+    config ESP_WIFI_SSID
+        string "WiFi SSID"
+        default "modelcar"
+        help
+            SSID (network name) for the example to connect to.
+
+    config ESP_WIFI_PASSWORD
+        string "WiFi Password"
+        default "carmodel"
+        help
+            WiFi password (WPA or WPA2) for the example to use.
+
+    config ESP_WIFI_CHANNEL
+        int "WiFi Channel"
+        range 1 13
+        default 11
+        help
+            WiFi channel (network channel) for the example to use.
+
+    config ESP_MAX_STA_CONN
+        int "Maximal STA connections"
+        default 1
+        help
+            Max number of the STA connects to AP.
+
+    config ESP_WIFI_IP
+        string "WiFi IP"
+        default "192.168.0.1"
+
+    config ESP_WIFI_NETMASK
+        string "WiFi Netmask"
+        default "255.255.255.0"
 endmenu

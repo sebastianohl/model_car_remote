@@ -2,107 +2,126 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <math.h>
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "freertos/queue.h"
+
+#include "esp_event.h"
+#include "esp_wifi.h"
+#include "esp_log.h"
+#include "nvs_flash.h"
+#include "esp_ota_ops.h"
+
 #include "driver/gpio.h"
 #include "driver/ledc.h"
 
-#define ESP_INTR_FLAG_DEFAULT 0
+#include "modelcar.h"
+#include "httpd.h"
 
-static xQueueHandle gpio_evt_queue = NULL;
+#define TAG "modelcar_main"
 
-static uint32_t val_begin_of_sample = 0;
-static uint32_t val_end_of_sample = 0;
-static void IRAM_ATTR gpio_isr_handler(void* arg)
+static void wifi_event_handler(void* arg, esp_event_base_t event_base,
+                                    int32_t event_id, void* event_data)
 {
-    if (gpio_get_level(CONFIG_SERVO_INPUT_PORT_NUM)) {
-        val_begin_of_sample = esp_timer_get_time();
-        val_end_of_sample = val_begin_of_sample;
-    } else {
-        val_end_of_sample = esp_timer_get_time();
-        uint32_t pulse_with = val_end_of_sample - val_begin_of_sample;
-        xQueueSendFromISR(gpio_evt_queue, &pulse_with, NULL);
+    if (event_id == WIFI_EVENT_AP_STACONNECTED) {
+        wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
+        ESP_LOGI(TAG, "station "MACSTR" join, AID=%d",
+                 MAC2STR(event->mac), event->aid);
+    } else if (event_id == WIFI_EVENT_AP_STADISCONNECTED) {
+        wifi_event_ap_stadisconnected_t* event = (wifi_event_ap_stadisconnected_t*) event_data;
+        ESP_LOGI(TAG, "station "MACSTR" leave, AID=%d",
+                 MAC2STR(event->mac), event->aid);
     }
 }
 
-uint32_t DutyCyclePercentageToDuty(float per)
+void wifi_init_softap(void)
 {
-    return per/100.0f * pow(2,LEDC_TIMER_13_BIT);
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();
 
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
+                                                        ESP_EVENT_ANY_ID,
+                                                        &wifi_event_handler,
+                                                        NULL,
+                                                        NULL));
+
+    wifi_config_t wifi_config = {
+        .ap = {
+            .ssid = CONFIG_ESP_WIFI_SSID,
+            .ssid_len = strlen(CONFIG_ESP_WIFI_SSID),
+            .channel = CONFIG_ESP_WIFI_CHANNEL,
+            .password = CONFIG_ESP_WIFI_PASSWORD,
+            .max_connection = CONFIG_ESP_MAX_STA_CONN,
+            .authmode = WIFI_AUTH_WPA_WPA2_PSK
+        },
+    };
+    if (strlen(CONFIG_ESP_WIFI_PASSWORD) == 0) {
+        wifi_config.ap.authmode = WIFI_AUTH_OPEN;
+    }
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    ESP_LOGI(TAG, "wifi_init_softap finished. SSID:%s password:%s channel:%d",
+             CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD, CONFIG_ESP_WIFI_CHANNEL);
+
+    esp_netif_ip_info_t info_t = {};
+    info_t.ip.addr = esp_ip4addr_aton((const char *)CONFIG_ESP_WIFI_IP);
+    info_t.netmask.addr = esp_ip4addr_aton((const char *)CONFIG_ESP_WIFI_NETMASK);
+
+    ESP_ERROR_CHECK(esp_netif_dhcps_stop(ap_netif));
+    esp_netif_set_ip_info(ap_netif, &info_t);
+    ESP_ERROR_CHECK(esp_netif_dhcps_start(ap_netif));
+    ESP_LOGI(TAG, "wifi_network setup finished IP %s Netmask %s",
+             CONFIG_ESP_WIFI_IP, CONFIG_ESP_WIFI_NETMASK);
 }
 
-float DutyCycleScale(float per, float scale)
-{
-    return 7.5+((7.5f-per)*scale);
-}
 
-float DutyCycleUsToPercentage(uint32_t us)
-{
-    return us / 200.0f /* us to percent at 50hz*/;
-}
 
 void app_main(void)
 {
-    //zero-initialize the config structure.
-    gpio_config_t io_conf = {};
-    //disable pull-down mode
-    io_conf.pull_down_en = 0;
-    //interrupt of rising edge
-    io_conf.intr_type = GPIO_INTR_ANYEDGE;
-    io_conf.pin_bit_mask = (1ULL<<CONFIG_SERVO_INPUT_PORT_NUM);
-    //set as input mode
-    io_conf.mode = GPIO_MODE_INPUT;
-    //enable pull-up mode
-    io_conf.pull_up_en = 1;
-    gpio_config(&io_conf);
+    const esp_partition_t* current_partition = esp_ota_get_running_partition();
+    const esp_app_desc_t *app_desc = esp_ota_get_app_description();
+    ESP_LOGI(TAG, "running partition %s version %s", current_partition->label, app_desc->version);
 
-    //create a queue to handle gpio event from isr
-    gpio_evt_queue = xQueueCreate(100, sizeof(uint32_t));
+    //Initialize NVS
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+      ESP_ERROR_CHECK(nvs_flash_erase());
+      ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
 
-    //install gpio isr service
-    gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
-    //hook isr handler for specific gpio pin
-    gpio_isr_handler_add(CONFIG_SERVO_INPUT_PORT_NUM, gpio_isr_handler, (void*) CONFIG_SERVO_INPUT_PORT_NUM);
-
-    /*
-     * Prepare and set configuration of timers
-     * that will be used by LED Controller
-     */
-    ledc_timer_config_t ledc_timer = {
-        .duty_resolution = LEDC_TIMER_13_BIT, // resolution of PWM duty
-        .freq_hz = 50,                      // frequency of PWM signal
-        .speed_mode = LEDC_LOW_SPEED_MODE,           // timer mode
-        .timer_num = LEDC_TIMER_1,            // timer index
-        .clk_cfg = LEDC_AUTO_CLK,              // Auto select the source clock
+    modelcar_config_t car_config = {
+        .input_channel_count = 2,
+        .output_channel_count = 2,
     };
-    // Set configuration of timer0 for high speed channels
-    ledc_timer_config(&ledc_timer);
+    modelcar_init_output_channel(&car_config.output_channel[0], CONFIG_SERVO1_OUTPUT_PORT_NUM, LEDC_CHANNEL_0);
+    modelcar_init_input_channel(&car_config.input_channel[0], CONFIG_SERVO1_INPUT_PORT_NUM);
+    modelcar_init_output_channel(&car_config.output_channel[1], CONFIG_SERVO2_OUTPUT_PORT_NUM, LEDC_CHANNEL_1);
+    modelcar_init_input_channel(&car_config.input_channel[1], CONFIG_SERVO2_INPUT_PORT_NUM);
+    modelcar_init(&car_config);
 
-    ledc_channel_config_t ledc_channel = {
-            .channel    = LEDC_CHANNEL_0,
-            .duty       = 0,
-            .gpio_num   = CONFIG_SERVO_OUTPUT_PORT_NUM,
-            .speed_mode = LEDC_LOW_SPEED_MODE,
-            .hpoint     = 0,
-            .timer_sel  = LEDC_TIMER_1
-    };
-    ledc_channel_config(&ledc_channel);
-    ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel, DutyCyclePercentageToDuty(7.5f));
-    ledc_update_duty(ledc_channel.speed_mode, ledc_channel.channel);
+    wifi_init_softap();
+    modelcar_httpd_start_webserver();
 
-    printf("Minimum free heap size: %d bytes\n", esp_get_minimum_free_heap_size());
+    ESP_LOGI(TAG, "Minimum free heap size: %d bytes", esp_get_minimum_free_heap_size());
 
     while(1) {
-        uint32_t pulse_width;
-        if(xQueueReceive(gpio_evt_queue, &pulse_width, 500/portTICK_RATE_MS)) {
-            printf("val: %d us %f %%\n", pulse_width, DutyCycleUsToPercentage(pulse_width));
-            ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel, 
-                DutyCyclePercentageToDuty(DutyCycleScale(DutyCycleUsToPercentage(pulse_width), 1.0f)));
-            ledc_update_duty(ledc_channel.speed_mode, ledc_channel.channel);
+        modelcar_queue_value_t value;
+        if(xQueueReceive(car_config.gpio_evt_queue, &value, 500/portTICK_RATE_MS)) {
+            ESP_LOGD(TAG, "val servo%d: %d us", value.channel_idx+1, value.pulse_width);
+            modelcar_update_output_by_us(
+                &car_config.output_channel[value.channel_idx], 
+                value.pulse_width, 
+                (value.channel_idx==0)?modelcar_httpd_get_servo1_factor():modelcar_httpd_get_servo2_factor()
+            );
         } else {
-            printf("timeout\n");
+            ESP_LOGW(TAG, "timeout");
         }
     }
 }
