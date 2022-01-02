@@ -14,6 +14,9 @@ struct nvs_data_s {
 static esp_err_t root_get_handler(httpd_req_t *req);
 static esp_err_t save_get_handler(httpd_req_t *req);
 
+static esp_err_t servo1_get_handler(httpd_req_t *req);
+static esp_err_t servo2_get_handler(httpd_req_t *req);
+
 static struct nvs_data_s nvs_data = {
     .servo1_factor = 1.0f,
     .servo2_factor = 1.0f,
@@ -33,9 +36,28 @@ static const httpd_uri_t uri_save_handler = {
     .user_ctx  = NULL
 };
 
+static const httpd_uri_t uri_servo1_get_handler = {
+    .uri       = "/read_servo1",
+    .method    = HTTP_GET,
+    .handler   = servo1_get_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t uri_servo2_get_handler = {
+    .uri       = "/read_servo2",
+    .method    = HTTP_GET,
+    .handler   = servo2_get_handler,
+    .user_ctx  = NULL
+};
+
+
 static esp_err_t root_get_handler(httpd_req_t *req)
 {
-    const char* resp_str = "<html><body><h1>Model Car Config</h1><form action=\"/save\" method=\"GET\">Servo Factor 1: <input type=\"text\" name=\"servo1_factor\"><br/>Servo Factor 2: <input type=\"text\" name=\"servo2_factor\"><br/><input type=\"submit\"></body></html>";
+    ESP_LOGI(TAG, "root handler called");
+
+    const char* resp_str = 
+    #include "index.html.txt"
+    ;
     httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
 
     return ESP_OK;
@@ -46,6 +68,7 @@ static esp_err_t save_get_handler(httpd_req_t *req)
     char*  buf;
     size_t buf_len;
 
+    ESP_LOGI(TAG, "save handler called");
     /* Read URL query string length and allocate memory for length + 1,
      * extra byte for null termination */
     buf_len = httpd_req_get_url_query_len(req) + 1;
@@ -85,6 +108,26 @@ static esp_err_t save_get_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t servo1_get_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG, "servo1 handler called");
+    char resp_str[30] = {0};
+    snprintf(resp_str, sizeof(resp_str), "%.2f", nvs_data.servo1_factor);
+    httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
+
+    return ESP_OK;
+}
+
+static esp_err_t servo2_get_handler(httpd_req_t *req)
+{
+    ESP_LOGI(TAG, "servo2 handler called");
+    
+    char resp_str[30] =  {0};
+    snprintf(resp_str, sizeof(resp_str), "%.2f", nvs_data.servo2_factor);
+    httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
+
+    return ESP_OK;
+}
 
 httpd_handle_t modelcar_httpd_start_webserver(void)
 {
@@ -113,6 +156,9 @@ httpd_handle_t modelcar_httpd_start_webserver(void)
         ESP_LOGI(TAG, "Registering URI handlers");
         httpd_register_uri_handler(server, &uri_root_handler);
         httpd_register_uri_handler(server, &uri_save_handler);
+
+        httpd_register_uri_handler(server, &uri_servo1_get_handler);
+        httpd_register_uri_handler(server, &uri_servo2_get_handler);
         return server;
     }
 
