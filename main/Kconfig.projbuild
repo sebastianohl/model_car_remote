@@ -41,7 +41,7 @@ menu "Model Car Remote Configuration"
 
     config ESP_MAX_STA_CONN
         int "Maximal STA connections"
-        default 1
+        default 5
         help
             Max number of the STA connects to AP.
 

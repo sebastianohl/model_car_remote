@@ -3,6 +3,8 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 
+#include "wifi-captive-portal/wifi-captive-portal-esp-idf-httpd.h"
+
 #define TAG "modelcar httpd"
 #define STORAGE_NAMESPACE "storage"
 
@@ -18,12 +20,7 @@ struct nvs_data_s {
 static esp_err_t root_get_handler(httpd_req_t *req);
 static esp_err_t save_get_handler(httpd_req_t *req);
 
-static esp_err_t servo1_factor_get_handler(httpd_req_t *req);
-static esp_err_t servo2_factor_get_handler(httpd_req_t *req);
-static esp_err_t servo1_offset_get_handler(httpd_req_t *req);
-static esp_err_t servo2_offset_get_handler(httpd_req_t *req);
-static esp_err_t servo1_limit_get_handler(httpd_req_t *req);
-static esp_err_t servo2_limit_get_handler(httpd_req_t *req);
+static esp_err_t servo_read_get_handler(httpd_req_t *req);
 
 static struct nvs_data_s nvs_data = {
     .servo1_factor = 1.0f,
@@ -32,6 +29,13 @@ static struct nvs_data_s nvs_data = {
     .servo2_offset = 0,
     .servo1_limit = 1.0f,
     .servo2_limit = 1.0f,
+};
+
+static httpd_uri_t common_get_uri = {
+    .uri = "/*",
+    .method = HTTP_GET,
+    .handler = rest_common_get_handler,
+    .user_ctx = NULL,
 };
 
 static const httpd_uri_t uri_root_handler = {
@@ -48,42 +52,10 @@ static const httpd_uri_t uri_save_handler = {
     .user_ctx  = NULL
 };
 
-static const httpd_uri_t uri_servo1_factor_get_handler = {
-    .uri       = "/read_servo1_factor",
+static const httpd_uri_t uri_servo_read_get_handler = {
+    .uri       = "/read",
     .method    = HTTP_GET,
-    .handler   = servo1_factor_get_handler,
-    .user_ctx  = NULL
-};
-static const httpd_uri_t uri_servo2_factor_get_handler = {
-    .uri       = "/read_servo2_factor",
-    .method    = HTTP_GET,
-    .handler   = servo2_factor_get_handler,
-    .user_ctx  = NULL
-};
-
-static const httpd_uri_t uri_servo1_offset_get_handler = {
-    .uri       = "/read_servo1_offset",
-    .method    = HTTP_GET,
-    .handler   = servo1_offset_get_handler,
-    .user_ctx  = NULL
-};
-static const httpd_uri_t uri_servo2_offset_get_handler = {
-    .uri       = "/read_servo2_offset",
-    .method    = HTTP_GET,
-    .handler   = servo2_offset_get_handler,
-    .user_ctx  = NULL
-};
-
-static const httpd_uri_t uri_servo1_limit_get_handler = {
-    .uri       = "/read_servo1_limit",
-    .method    = HTTP_GET,
-    .handler   = servo1_limit_get_handler,
-    .user_ctx  = NULL
-};
-static const httpd_uri_t uri_servo2_limit_get_handler = {
-    .uri       = "/read_servo2_limit",
-    .method    = HTTP_GET,
-    .handler   = servo2_limit_get_handler,
+    .handler   = servo_read_get_handler,
     .user_ctx  = NULL
 };
 
@@ -168,67 +140,51 @@ static esp_err_t save_get_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-static esp_err_t servo1_factor_get_handler(httpd_req_t *req)
+static esp_err_t servo_read_get_handler(httpd_req_t *req)
 {
-    ESP_LOGI(TAG, "servo1 factor handler called");
-    char resp_str[30] = {0};
-    snprintf(resp_str, sizeof(resp_str), "%.2f", nvs_data.servo1_factor);
+    ESP_LOGI(TAG, "servo read handler called");
+
+    char resp_str[128] = {0};
+
+    char* buf = 0;
+    size_t buf_len = httpd_req_get_url_query_len(req) + 1;
+    if (buf_len > 1) {
+        buf = malloc(buf_len);
+        if (httpd_req_get_url_query_str(req, buf, buf_len) == ESP_OK) {
+            ESP_LOGI(TAG, "Found URL query => %s", buf);
+            char param[64] = {0};
+            if (httpd_query_key_value(buf, "value", param, sizeof(param)) == ESP_OK) {
+                if (strcmp(param, "servo1_factor") == 0) {
+                    snprintf(resp_str, sizeof(resp_str), "%.2f", nvs_data.servo1_factor);
+                } else if (strcmp(param, "servo2_factor") == 0) {
+                    snprintf(resp_str, sizeof(resp_str), "%.2f", nvs_data.servo2_factor);
+                } else if (strcmp(param, "servo1_offset") == 0) {
+                    snprintf(resp_str, sizeof(resp_str), "%d", nvs_data.servo1_offset);
+                } else if (strcmp(param, "servo2_offset") == 0) {
+                    snprintf(resp_str, sizeof(resp_str), "%d", nvs_data.servo2_offset);
+                } else if (strcmp(param, "servo1_limit") == 0) {
+                    snprintf(resp_str, sizeof(resp_str), "%.2f", nvs_data.servo1_limit);
+                } else if (strcmp(param, "servo2_limit") == 0) {
+                    snprintf(resp_str, sizeof(resp_str), "%.2f", nvs_data.servo2_limit);
+                } else {
+                    snprintf(resp_str, sizeof(resp_str), "error value %s not found", param);
+                }
+            } else {
+                snprintf(resp_str, sizeof(resp_str), "error no value found");
+            }
+        }
+        free(buf);
+    }
+
     httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
 
     return ESP_OK;
 }
 
-static esp_err_t servo2_factor_get_handler(httpd_req_t *req)
+static bool my_uri_match_wildcard(const char *uri_template, const char *uri_to_match, size_t match_upto)
 {
-    ESP_LOGI(TAG, "servo2 factor handler called");
-    
-    char resp_str[30] =  {0};
-    snprintf(resp_str, sizeof(resp_str), "%.2f", nvs_data.servo2_factor);
-    httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
-
-    return ESP_OK;
-}
-
-static esp_err_t servo1_offset_get_handler(httpd_req_t *req)
-{
-    ESP_LOGI(TAG, "servo1 offset handler called");
-    char resp_str[30] = {0};
-    snprintf(resp_str, sizeof(resp_str), "%d", nvs_data.servo1_offset);
-    httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
-
-    return ESP_OK;
-}
-
-static esp_err_t servo2_offset_get_handler(httpd_req_t *req)
-{
-    ESP_LOGI(TAG, "servo2 offset handler called");
-    
-    char resp_str[30] =  {0};
-    snprintf(resp_str, sizeof(resp_str), "%d", nvs_data.servo2_offset);
-    httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
-
-    return ESP_OK;
-}
-
-static esp_err_t servo1_limit_get_handler(httpd_req_t *req)
-{
-    ESP_LOGI(TAG, "servo1 limit handler called");
-    char resp_str[30] = {0};
-    snprintf(resp_str, sizeof(resp_str), "%.2f", nvs_data.servo1_limit);
-    httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
-
-    return ESP_OK;
-}
-
-static esp_err_t servo2_limit_get_handler(httpd_req_t *req)
-{
-    ESP_LOGI(TAG, "servo2 limit handler called");
-    
-    char resp_str[30] =  {0};
-    snprintf(resp_str, sizeof(resp_str), "%.2f", nvs_data.servo2_limit);
-    httpd_resp_send(req, resp_str, HTTPD_RESP_USE_STRLEN);
-
-    return ESP_OK;
+  ESP_LOGI(TAG, "%s ~= %s", uri_template, uri_to_match);
+  return httpd_uri_match_wildcard(uri_template, uri_to_match, match_upto);
 }
 
 httpd_handle_t modelcar_httpd_start_webserver(void)
@@ -236,7 +192,8 @@ httpd_handle_t modelcar_httpd_start_webserver(void)
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.lru_purge_enable = true;
-
+    config.uri_match_fn = my_uri_match_wildcard;
+  
     nvs_handle_t my_handle;
 
     ESP_LOGI(TAG, "read data params from NVS");
@@ -264,15 +221,15 @@ httpd_handle_t modelcar_httpd_start_webserver(void)
     if (httpd_start(&server, &config) == ESP_OK) {
         // Set URI handlers
         ESP_LOGI(TAG, "Registering URI handlers");
+        
         httpd_register_uri_handler(server, &uri_root_handler);
         httpd_register_uri_handler(server, &uri_save_handler);
+        httpd_register_uri_handler(server, &uri_servo_read_get_handler);
 
-        httpd_register_uri_handler(server, &uri_servo1_factor_get_handler);
-        httpd_register_uri_handler(server, &uri_servo2_factor_get_handler);
-        httpd_register_uri_handler(server, &uri_servo1_offset_get_handler);
-        httpd_register_uri_handler(server, &uri_servo2_offset_get_handler);
-        httpd_register_uri_handler(server, &uri_servo1_limit_get_handler);
-        httpd_register_uri_handler(server, &uri_servo2_limit_get_handler);
+        common_get_uri.user_ctx = malloc(100);
+        snprintf((char *)common_get_uri.user_ctx, 100, "http://%s/", CONFIG_ESP_WIFI_IP);
+        httpd_register_uri_handler(server, &common_get_uri);
+
         return server;
     }
 

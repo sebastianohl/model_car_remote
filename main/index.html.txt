@@ -16,7 +16,7 @@
 "                updateDisplay();\n"
 "            }\n"
 "        };\n"
-"        xhttp.open(\"GET\", \"read_\" + servo, true);\n"
+"        xhttp.open(\"GET\", \"read?value=\" + servo, true);\n"
 "        xhttp.send();\n"
 "    }\n"
 "    function setData() {\n"

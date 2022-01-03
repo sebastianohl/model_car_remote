@@ -16,6 +16,7 @@
 
 #include "modelcar.h"
 #include "httpd.h"
+#include "wifi-captive-portal/wifi-captive-portal-esp-idf-dns.h"
 
 #define TAG "modelcar_main"
 
@@ -69,15 +70,20 @@ void wifi_init_softap(void)
     ESP_LOGI(TAG, "wifi_init_softap finished. SSID:%s password:%s channel:%d",
              CONFIG_ESP_WIFI_SSID, CONFIG_ESP_WIFI_PASSWORD, CONFIG_ESP_WIFI_CHANNEL);
 
-    esp_netif_ip_info_t info_t = {};
-    info_t.ip.addr = esp_ip4addr_aton((const char *)CONFIG_ESP_WIFI_IP);
-    info_t.netmask.addr = esp_ip4addr_aton((const char *)CONFIG_ESP_WIFI_NETMASK);
+    esp_netif_ip_info_t ip_info = {};
+
+    ip_info.ip.addr = esp_ip4addr_aton((const char *)CONFIG_ESP_WIFI_IP);
+    ip_info.gw.addr = esp_ip4addr_aton((const char *)CONFIG_ESP_WIFI_IP);
+    ip_info.netmask.addr = esp_ip4addr_aton((const char *)CONFIG_ESP_WIFI_NETMASK);
+
 
     ESP_ERROR_CHECK(esp_netif_dhcps_stop(ap_netif));
-    esp_netif_set_ip_info(ap_netif, &info_t);
+    esp_netif_set_ip_info(ap_netif, &ip_info);
     ESP_ERROR_CHECK(esp_netif_dhcps_start(ap_netif));
     ESP_LOGI(TAG, "wifi_network setup finished IP %s Netmask %s",
              CONFIG_ESP_WIFI_IP, CONFIG_ESP_WIFI_NETMASK);
+
+    wifi_captive_portal_esp_idf_dns_init();
 }
 
 
