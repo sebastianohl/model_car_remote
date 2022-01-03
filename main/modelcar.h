@@ -23,12 +23,12 @@ typedef struct modelcar_output_channel_s modelcar_output_channel_t;
 
 enum drive_mode_e
 {
-    NEUTRAL=0,
-    FORWARD=1,
-    NEUTRAL_FORWARD=2,
-    BACKWARDS=3,
-    BREAK=4,
-    BREAK_BACKWARDS=5,
+    NEUTRAL = 0,
+    FORWARD = 1,
+    NEUTRAL_FORWARD = 2,
+    BACKWARDS = 3,
+    BREAK = 4,
+    BREAK_BACKWARDS = 5,
     MAX
 };
 typedef enum drive_mode_e drive_mode_t;
@@ -51,15 +51,18 @@ struct modelcar_queue_value_s
 };
 typedef struct modelcar_queue_value_s modelcar_queue_value_t;
 
-void modelcar_init_output_channel(modelcar_output_channel_t *channel, uint8_t portnum, uint8_t ledchannel);
-void modelcar_init_input_channel(modelcar_input_channel_t *channel, uint8_t portnum);
+void modelcar_init_output_channel(modelcar_output_channel_t *channel,
+                                  uint8_t portnum, uint8_t ledchannel);
+void modelcar_init_input_channel(modelcar_input_channel_t *channel,
+                                 uint8_t portnum);
 void modelcar_init(modelcar_config_t *config);
 
-uint32_t modelcar_update_output_by_us(modelcar_output_channel_t *channel, uint32_t us, float scale, int offset, float limit);
+uint32_t modelcar_update_output_by_us(modelcar_output_channel_t *channel,
+                                      uint32_t us, float scale, int offset,
+                                      float limit);
 void modelcar_update_drivemode(drive_mode_t *channel, uint32_t us, int offset);
 
 uint32_t DutyCyclePercentageToDuty(float per);
 float DutyCycleUsToPercentage(int32_t us);
-
 
 #endif
