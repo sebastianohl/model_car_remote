@@ -34,12 +34,26 @@ uint32_t DutyCyclePercentageToDuty(float per)
 
 float DutyCycleScale(float per, float scale)
 {
-    return 7.5+((7.5f-per)*scale);
+    return 7.5f+((per-7.5f)*scale);
 }
 
-float DutyCycleUsToPercentage(uint32_t us)
+float DutyCycleUsToPercentage(int32_t us)
 {
     return us / 200.0f /* us to percent at 50hz*/;
+}
+
+uint32_t DutyCycleOffset(uint32_t us, int offset)
+{
+    return us+offset;
+}
+
+float DutyCycleLimit(float per, float limit, int offset)
+{
+    per -= 7.5f-DutyCycleUsToPercentage(offset);
+    const float neutral = 7.5f*0.5f;
+    if (per > neutral*limit) { per = neutral*limit; } 
+    else if (per < -neutral*limit) { per = -neutral*limit; }
+    return 7.5f-DutyCycleUsToPercentage(offset)+per;
 }
 
 void modelcar_init_output_channel(modelcar_output_channel_t *channel, uint8_t portnum, uint8_t ledchannel)
@@ -116,8 +130,19 @@ void modelcar_init(modelcar_config_t *config)
     }
 }
 
-void modelcar_update_output_by_us(modelcar_output_channel_t *channel, uint32_t us, float scale)
+uint32_t modelcar_update_output_by_us(modelcar_output_channel_t *channel, uint32_t us, float scale, int offset, float limit)
 {
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, channel->ledchannel, DutyCyclePercentageToDuty(DutyCycleScale(DutyCycleUsToPercentage(us), scale)));
+    uint32_t dc = DutyCyclePercentageToDuty(
+            DutyCycleScale(
+                DutyCycleLimit(
+                    DutyCycleUsToPercentage(
+                        DutyCycleOffset(us, offset)
+                    ),
+                limit, offset),
+            scale)
+        );
+ 
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, channel->ledchannel, dc);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, channel->ledchannel);
+    return dc;
 }

@@ -42,7 +42,10 @@ void modelcar_init_output_channel(modelcar_output_channel_t *channel, uint8_t po
 void modelcar_init_input_channel(modelcar_input_channel_t *channel, uint8_t portnum);
 void modelcar_init(modelcar_config_t *config);
 
-void modelcar_update_output_by_us(modelcar_output_channel_t *channel, uint32_t us, float scale);
+uint32_t modelcar_update_output_by_us(modelcar_output_channel_t *channel, uint32_t us, float scale, int offset, float limit);
+
+uint32_t DutyCyclePercentageToDuty(float per);
+float DutyCycleUsToPercentage(int32_t us);
 
 
 #endif

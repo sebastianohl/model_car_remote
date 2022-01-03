@@ -114,12 +114,20 @@ void app_main(void)
     while(1) {
         modelcar_queue_value_t value;
         if(xQueueReceive(car_config.gpio_evt_queue, &value, 500/portTICK_RATE_MS)) {
-            ESP_LOGD(TAG, "val servo%d: %d us", value.channel_idx+1, value.pulse_width);
-            modelcar_update_output_by_us(
+            uint32_t modified_dc = modelcar_update_output_by_us(
                 &car_config.output_channel[value.channel_idx], 
                 value.pulse_width, 
-                (value.channel_idx==0)?modelcar_httpd_get_servo1_factor():modelcar_httpd_get_servo2_factor()
+                (value.channel_idx==0)?modelcar_httpd_get_servo1_factor():modelcar_httpd_get_servo2_factor(),
+                (value.channel_idx==0)?modelcar_httpd_get_servo1_offset():modelcar_httpd_get_servo2_offset(),
+                (value.channel_idx==0)?modelcar_httpd_get_servo1_limit():modelcar_httpd_get_servo2_limit()
             );
+            if (0 && value.channel_idx==0)
+                ESP_LOGI(TAG, "val servo%d: %d us %d us %d us %f %%", 
+                    value.channel_idx+1, 
+                    value.pulse_width, 
+                    DutyCyclePercentageToDuty(DutyCycleUsToPercentage(value.pulse_width)),
+                    modified_dc,
+                    DutyCycleUsToPercentage(value.pulse_width));
         } else {
             ESP_LOGW(TAG, "timeout");
         }
