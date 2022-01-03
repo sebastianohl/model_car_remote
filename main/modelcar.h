@@ -21,11 +21,24 @@ struct modelcar_output_channel_s
 };
 typedef struct modelcar_output_channel_s modelcar_output_channel_t;
 
+enum drive_mode_e
+{
+    NEUTRAL=0,
+    FORWARD=1,
+    NEUTRAL_FORWARD=2,
+    BACKWARDS=3,
+    BREAK=4,
+    BREAK_BACKWARDS=5,
+    MAX
+};
+typedef enum drive_mode_e drive_mode_t;
+
 struct modelcar_config_s
 {
     xQueueHandle gpio_evt_queue;
     uint8_t input_channel_count;
     modelcar_input_channel_t input_channel[4];
+    drive_mode_t drive_mode[4];
     uint8_t output_channel_count;
     modelcar_output_channel_t output_channel[4];
 };
@@ -43,6 +56,7 @@ void modelcar_init_input_channel(modelcar_input_channel_t *channel, uint8_t port
 void modelcar_init(modelcar_config_t *config);
 
 uint32_t modelcar_update_output_by_us(modelcar_output_channel_t *channel, uint32_t us, float scale, int offset, float limit);
+void modelcar_update_drivemode(drive_mode_t *channel, uint32_t us, int offset);
 
 uint32_t DutyCyclePercentageToDuty(float per);
 float DutyCycleUsToPercentage(int32_t us);

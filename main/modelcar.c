@@ -98,6 +98,7 @@ void modelcar_init(modelcar_config_t *config)
         gpio_isr_handler_add(config->input_channel[i].portnum, gpio_isr_handler, (void*) &(config->input_channel[i]));
         config->input_channel[i].channel_idx = i;
         config->input_channel[i].gpio_evt_queue = &config->gpio_evt_queue;
+        config->drive_mode[i] = NEUTRAL;
     }
 
     /*
@@ -145,4 +146,44 @@ uint32_t modelcar_update_output_by_us(modelcar_output_channel_t *channel, uint32
     ledc_set_duty(LEDC_LOW_SPEED_MODE, channel->ledchannel, dc);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, channel->ledchannel);
     return dc;
+}
+
+void modelcar_update_drivemode(drive_mode_t *channel, uint32_t us, int offset)
+{
+    const float hist1 = 0.3;
+    const float hist2 = 0.2;
+    drive_mode_t cur = NEUTRAL;
+    float dc = DutyCycleUsToPercentage(DutyCycleOffset(us, offset));
+    if (dc < 7.5f-hist1)
+    {
+        cur = FORWARD;
+    } else if (dc > 7.5f+hist1)
+    {
+        cur = BACKWARDS;
+    }
+    switch (*channel) {
+        case BACKWARDS:
+        case NEUTRAL: {
+            *channel = cur;
+        }; break;
+        case FORWARD: {
+            if (cur == BACKWARDS || cur == NEUTRAL) { *channel = NEUTRAL_FORWARD; }
+            else { *channel = cur; }
+        }; break;
+        case NEUTRAL_FORWARD: {
+            if (cur == BACKWARDS) { *channel = BREAK; }
+            if (cur == FORWARD) { *channel = FORWARD; }
+        }; break;
+        case BREAK: {
+            if (cur == NEUTRAL && dc < 7.5f+hist2) { *channel = NEUTRAL; }
+            if (cur == FORWARD) { *channel = FORWARD; }
+            if (cur == BACKWARDS) { *channel = BREAK_BACKWARDS; }
+        } break;
+        case BREAK_BACKWARDS: {
+            if (cur == NEUTRAL) { *channel = NEUTRAL; }
+            if (cur == FORWARD) { *channel = FORWARD; }
+        } break;
+        default: break;
+    }
+    
 }
